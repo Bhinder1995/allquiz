@@ -1,35 +1,64 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Body
 from fastapi.middleware.cors import CORSMiddleware
 import google.generativeai as genai
 import os
+import json
 
+# ----------------------
+# App init
+# ----------------------
 app = FastAPI()
 
-# Allow Netlify
+# ----------------------
+# CORS (Allow Netlify / frontend)
+# ----------------------
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],   # you can restrict later
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Configure Gemini
-genai.configure(api_key=os.getenv("AIzaSyBJzF6GiDhofEZ5xXUpQzC7urYIf2vLt_U"))
+# ----------------------
+# Health check (IMPORTANT for Render)
+# ----------------------
+@app.get("/")
+def health():
+    return {"status": "ok"}
+
+# ----------------------
+# Gemini configuration
+# ----------------------
+genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+
 model = genai.GenerativeModel("gemini-pro")
 
+# ----------------------
+# Generate Quiz API
+# ----------------------
 @app.post("/generate-quiz")
-async def generate_quiz(data: dict):
+async def generate_quiz(data: dict = Body(...)):
     topic = data.get("topic", "general knowledge")
 
     prompt = f"""
     Create ONE multiple choice quiz question on {topic}.
-    Return JSON only in this format:
+
+    Return JSON ONLY in this exact format:
     {{
-      "question": "...",
+      "question": "question text",
       "options": ["A", "B", "C", "D"],
       "answer": "correct option"
     }}
     """
 
-    response = model.generate_content(prompt)
-    return response.text
+    try:
+        response = model.generate_content(prompt)
+
+        # Convert AI response to JSON
+        return json.loads(response.text)
+
+    except Exception as e:
+        return {
+            "error": "Failed to generate quiz",
+            "details": str(e)
+        }
